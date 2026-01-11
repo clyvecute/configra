@@ -1,0 +1,6 @@
+# github.com/clyvecute/configra/internal/configs [github.com/clyvecute/configra/internal/configs.test]
+internal\configs\validator.go:135:12: cannot use fmt.Sprintf("field '%s' must be >= %v", key, *rule.Min) (value of type string) as error value in return statement: string does not implement error (missing method Error)
+internal\configs\validator.go:138:12: cannot use fmt.Sprintf("field '%s' must be <= %v", key, *rule.Max) (value of type string) as error value in return statement: string does not implement error (missing method Error)
+internal\configs\validator.go:153:11: cannot use fmt.Sprintf("field '%s' has invalid value '%v'; allowed: %v", key, val, rule.Allowed) (value of type string) as error value in return statement: string does not implement error (missing method Error)
+FAIL	github.com/clyvecute/configra/internal/configs [build failed]
+FAIL

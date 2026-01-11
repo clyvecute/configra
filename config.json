@@ -1,0 +1,5 @@
+{
+    "app_name": "My Service",
+    "max_retries": 3,
+    "mode": "debug"
+}
