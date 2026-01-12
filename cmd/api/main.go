@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -57,6 +58,22 @@ func main() {
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("ok"))
+	})
+
+	// Root handler (Landing Page) - Friendly message for browser/portfolio visitors
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/" {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		response := map[string]string{
+			"service": "Configra API",
+			"status":  "running",
+			"docs":    "This is a JSON-only API. Use the CLI or API endpoints.",
+			"endpoints": "/health, /v1/validate, /v1/configs, /v1/rollback",
+		}
+		json.NewEncoder(w).Encode(response)
 	})
 
 	fmt.Println("Starting Configra API on :8080")
