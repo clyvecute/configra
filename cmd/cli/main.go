@@ -32,6 +32,11 @@ func main() {
 	_ = fetchCmd.String("project", "", "Project ID")
 	_ = fetchCmd.String("env", "prod", "Environment")
 
+	rollbackCmd := flag.NewFlagSet("rollback", flag.ExitOnError)
+	_ = rollbackCmd.String("project", "", "Project ID")
+	_ = rollbackCmd.String("key", "", "Config Key")
+	_ = rollbackCmd.String("version", "", "Target Version to restore")
+
 	switch os.Args[1] {
 	case "validate":
 		validateCmd.Parse(os.Args[2:])
@@ -50,6 +55,12 @@ func main() {
 	case "fetch":
 		fetchCmd.Parse(os.Args[2:])
 		fmt.Println("Fetch logic to be implemented. Would fetch from API.")
+	case "rollback":
+		rollbackCmd.Parse(os.Args[2:])
+		p := ""; if f := rollbackCmd.Lookup("project"); f != nil { p = f.Value.String() }
+		k := ""; if f := rollbackCmd.Lookup("key"); f != nil { k = f.Value.String() }
+		v := ""; if f := rollbackCmd.Lookup("version"); f != nil { v = f.Value.String() }
+		runRollback(p, k, v)
 	case "migrate":
 		// Ensure we load config to get DB creds
 		runMigrate()
@@ -186,6 +197,35 @@ func runPush(configFile, projectID string) {
 	}
 
 	fmt.Println("Successfully pushed config to server!")
+}
+
+func runRollback(projectID, key, version string) {
+	// Simple conversions
+	pID := 1 // default
+	vID := 0
+	fmt.Sscanf(version, "%d", &vID)
+
+	payload := map[string]interface{}{
+		"project_id":     pID,
+		"env_id":         1, // default
+		"key":            key,
+		"target_version": vID,
+	}
+
+	body, _ := json.Marshal(payload)
+	resp, err := http.Post("http://localhost:8080/v1/rollback", "application/json", bytes.NewBuffer(body))
+	if err != nil {
+		fmt.Printf("Failed to connect to API: %v\n", err)
+		os.Exit(1)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		fmt.Printf("Rollback failed: %s\n", resp.Status)
+		return
+	}
+
+	fmt.Printf("\u2705 Successfully rolled back '%s' to version %s!\n", key, version)
 }
 
 // Add these imports at the top if missing: bytes, net/http

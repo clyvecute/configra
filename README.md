@@ -29,6 +29,7 @@ Configra treats configuration as a first-class citizen with the same rigor as co
 | :--- | :--- |
 | **Atomic Versioning** | Every update is transactional. No partial states. |
 | **Strict Validation** | Type checking (Int, String, Enum, Boolean) prevents bad data entry. |
+| **Project Security** | **API Key Authentication** ensures only authorized clients can push configs. |
 | **CLI First** | Validate configs locally (`configra validate`) before pushing them. |
 | **Auto-Migration** | The service self-manages its database schema on startup. |
 | **Cloud Native** | Stateless architecture ready for Serverless (Cloud Run, Render, Fly.io). |
@@ -70,6 +71,10 @@ configra validate -schema schema.json -config config.json
 
 # 2. Push the validated config to the server
 configra push -file config.json -project 1
+
+# 3. Rollback to a previous version (Emergency)
+configra rollback -project 1 -key feature_flags -version 1
+
 ```
 
 ---

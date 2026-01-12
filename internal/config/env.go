@@ -20,6 +20,7 @@ func Load() AppConfig {
 			User:     getEnv("DB_USER", "user"),
 			Password: getEnv("DB_PASSWORD", "password"),
 			DBName:   getEnv("DB_NAME", "configra"),
+			SSLMode:  getEnv("DB_SSLMODE", "disable"),
 		},
 	}
 }

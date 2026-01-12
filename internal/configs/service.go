@@ -35,3 +35,8 @@ func (s *Service) CreateConfig(projectID, envID int, key string, data, schema Ma
 func (s *Service) GetConfig(projectID, envID int, key string) (*Config, error) {
 	return s.repo.GetLatest(projectID, envID, key)
 }
+
+func (s *Service) RollbackConfig(projectID, envID int, key string, targetVersion int, userID int) (*Config, error) {
+	return s.repo.Rollback(projectID, envID, key, targetVersion, userID)
+}
+

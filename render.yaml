@@ -1,0 +1,44 @@
+services:
+  - type: web
+    name: configra-api
+    env: docker
+    plan: free
+    repo: https://github.com/clyvecute/configra # This will be replaced by the user's actual repo url when they connect, but this field is implied in blueprints if not specified
+    # Actually, usually you don't specify repo in render.yaml if it's in the repo itself.
+    envVars:
+      - key: PORT
+        value: 8080
+      - key: DB_HOST
+        fromService:
+          type: psql
+          name: configra-db
+          property: host
+      - key: DB_PORT
+        fromService:
+          type: psql
+          name: configra-db
+          property: port
+      - key: DB_USER
+        fromService:
+          type: psql
+          name: configra-db
+          property: user
+      - key: DB_PASSWORD
+        fromService:
+          type: psql
+          name: configra-db
+          property: password
+      - key: DB_NAME
+        fromService:
+          type: psql
+          name: configra-db
+          property: database
+      - key: DB_SSLMODE
+        value: disable
+
+databases:
+  - name: configra-db
+    databaseName: configra
+    user: configra_user
+    plan: free
+    ipAllowList: [] # Allow internal access only

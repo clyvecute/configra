@@ -8,6 +8,7 @@ import (
 	"github.com/clyvecute/configra/internal/config"
 	"github.com/clyvecute/configra/internal/configs"
 	"github.com/clyvecute/configra/internal/db"
+	"github.com/clyvecute/configra/internal/middleware"
 )
 
 func main() {
@@ -43,9 +44,13 @@ func main() {
 	configsService := configs.NewService(configsRepo)
 	configsHandler := configs.NewHandler(configsService)
 
+	// Initialize Middleware
+	authMiddleware := middleware.NewAuthMiddleware(database)
+
 	// Register routes
-	mux.HandleFunc("/v1/validate", configsHandler.Validate)
-	mux.HandleFunc("/v1/configs", configsHandler.Create) // Handle POST
+	mux.HandleFunc("/v1/validate", configsHandler.Validate) // No auth needed for local check check
+	mux.HandleFunc("/v1/configs", authMiddleware.RequireAPIKey(configsHandler.Create)) // Protected
+	mux.HandleFunc("/v1/rollback", authMiddleware.RequireAPIKey(configsHandler.Rollback)) // Protected
 
 
 	// Health check
