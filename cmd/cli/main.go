@@ -27,15 +27,18 @@ func main() {
 	pushCmd := flag.NewFlagSet("push", flag.ExitOnError)
 	_ = pushCmd.String("file", "config.json", "Config file to push")
 	_ = pushCmd.String("project", "", "Project ID")
+	pushHost := pushCmd.String("host", "http://localhost:8080", "API Host URL")
 
 	fetchCmd := flag.NewFlagSet("fetch", flag.ExitOnError)
 	_ = fetchCmd.String("project", "", "Project ID")
 	_ = fetchCmd.String("env", "prod", "Environment")
+	// fetchHost := fetchCmd.String("host", "http://localhost:8080", "API Host URL") // Uncomment when implementing fetch
 
 	rollbackCmd := flag.NewFlagSet("rollback", flag.ExitOnError)
 	_ = rollbackCmd.String("project", "", "Project ID")
 	_ = rollbackCmd.String("key", "", "Config Key")
 	_ = rollbackCmd.String("version", "", "Target Version to restore")
+	rollbackHost := rollbackCmd.String("host", "http://localhost:8080", "API Host URL")
 
 	switch os.Args[1] {
 	case "validate":
@@ -51,7 +54,7 @@ func main() {
 		if p := pushCmd.Lookup("project"); p != nil {
 			proj = p.Value.String()
 		}
-		runPush(file, proj)
+		runPush(file, proj, *pushHost)
 	case "fetch":
 		fetchCmd.Parse(os.Args[2:])
 		fmt.Println("Fetch logic to be implemented. Would fetch from API.")
@@ -60,7 +63,7 @@ func main() {
 		p := ""; if f := rollbackCmd.Lookup("project"); f != nil { p = f.Value.String() }
 		k := ""; if f := rollbackCmd.Lookup("key"); f != nil { k = f.Value.String() }
 		v := ""; if f := rollbackCmd.Lookup("version"); f != nil { v = f.Value.String() }
-		runRollback(p, k, v)
+		runRollback(p, k, v, *rollbackHost)
 	case "migrate":
 		// Ensure we load config to get DB creds
 		runMigrate()
@@ -138,7 +141,7 @@ func runValidate(schemaFile, configFile string) {
 	fmt.Println("\u2705 Configuration is VALID.")
 }
 
-func runPush(configFile, projectID string) {
+func runPush(configFile, projectID, host string) {
 	// 1. Read the config file and assumed schema file (for now co-located or we should bundle them)
 	// For this demo, let's assume schema.json is in the same dir
 	schemaFile := "schema.json"
@@ -183,7 +186,7 @@ func runPush(configFile, projectID string) {
 	
 	body, _ := json.Marshal(payload)
 	
-	resp, err := http.Post("http://localhost:8080/v1/configs", "application/json", bytes.NewBuffer(body))
+	resp, err := http.Post(fmt.Sprintf("%s/v1/configs", host), "application/json", bytes.NewBuffer(body))
 	if err != nil {
 		fmt.Printf("Failed to connect to API: %v\n", err)
 		os.Exit(1)
@@ -199,7 +202,7 @@ func runPush(configFile, projectID string) {
 	fmt.Println("Successfully pushed config to server!")
 }
 
-func runRollback(projectID, key, version string) {
+func runRollback(projectID, key, version, host string) {
 	// Simple conversions
 	pID := 1 // default
 	vID := 0
@@ -213,7 +216,7 @@ func runRollback(projectID, key, version string) {
 	}
 
 	body, _ := json.Marshal(payload)
-	resp, err := http.Post("http://localhost:8080/v1/rollback", "application/json", bytes.NewBuffer(body))
+	resp, err := http.Post(fmt.Sprintf("%s/v1/rollback", host), "application/json", bytes.NewBuffer(body))
 	if err != nil {
 		fmt.Printf("Failed to connect to API: %v\n", err)
 		os.Exit(1)
