@@ -11,6 +11,8 @@ services:
         fromDatabase:
           name: configra-db
           property: connectionString
+      - key: SENTINEL_URL
+        value: https://sentinelconfig.vercel.app/
 
 databases:
   - name: configra-db

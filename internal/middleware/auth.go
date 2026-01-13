@@ -27,6 +27,11 @@ func (m *AuthMiddleware) RequireAPIKey(next http.HandlerFunc) http.HandlerFunc {
 			return
 		}
 
+		if m.db == nil {
+			utils.WriteJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "database connection unavailable"})
+			return
+		}
+
 		var projectID int
 		// Simple query to validate key and get ID
 		err := m.db.QueryRow("SELECT id FROM projects WHERE api_key = $1", apiKey).Scan(&projectID)

@@ -47,6 +47,9 @@ func NewRepository(db *sql.DB) *Repository {
 // CreateOrUpdate handles the logic of creating a config key if it doesn't exist,
 // and then appending a new version to it.
 func (r *Repository) CreateOrUpdate(projectID, envID int, key string, data, schema Map, userID int) (*Config, error) {
+	if r.db == nil {
+		return nil, fmt.Errorf("database connection unavailable")
+	}
 	tx, err := r.db.Begin()
 	if err != nil {
 		return nil, err
@@ -104,6 +107,9 @@ func (r *Repository) CreateOrUpdate(projectID, envID int, key string, data, sche
 }
 
 func (r *Repository) GetLatest(projectID, envID int, key string) (*Config, error) {
+	if r.db == nil {
+		return nil, fmt.Errorf("database connection unavailable")
+	}
 	// Join configs and config_versions to get the latest data
 	query := `
 		SELECT c.id, c.updated_at, v.version, v.data, v.schema
@@ -137,6 +143,9 @@ func (r *Repository) GetLatest(projectID, envID int, key string) (*Config, error
 // Rollback finds a specific version of a config and creates a NEW version (latest + 1)
 // with that old content. This preserves history (immutable).
 func (r *Repository) Rollback(projectID, envID int, key string, targetVersion int, userID int) (*Config, error) {
+	if r.db == nil {
+		return nil, fmt.Errorf("database connection unavailable")
+	}
 	tx, err := r.db.Begin()
 	if err != nil {
 		return nil, err

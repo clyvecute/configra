@@ -18,31 +18,25 @@ func main() {
 	// Connect to DB
 	database, err := db.Connect(cfg.DB)
 	if err != nil {
-		log.Fatalf("Failed to connect to DB: %v", err)
-	}
-	defer database.Close()
-
-	// Auto-migrate database (simplifies cloud deployment)
-	log.Println("Running database migrations...")
-	// We need to find the migrations directory. In Docker, we'll COPY it to a known location.
-	// Or we can embed it using `embed`. embedding is much better for single-binary deploys.
-	// For now, let's assume relative path works if we setup Dockerfile correctly, 
-	// but strictly speaking, embedding is the "Pro" way.
-	// Let's stick to the existing Migrator which takes a path.
-	// We will assume "./internal/db/migrations" is available relative to CWD.
-	
-	if err := db.Migrate(database, "./internal/db/migrations"); err != nil {
-		log.Printf("Warning: Migration failed (might be already up to date or path issue): %v", err)
-		// Don't fatal here in case it's just a path issue in dev, but in prod we want to know.
+		log.Printf("Warning: Failed to connect to DB: %v. Database-backed features will be disabled.", err)
 	} else {
-		log.Println("Migrations applied successfully!")
+		defer database.Close()
+		
+		// Auto-migrate database
+		log.Println("Running database migrations...")
+		if err := db.Migrate(database, "./internal/db/migrations"); err != nil {
+			log.Printf("Warning: Migration failed: %v", err)
+		} else {
+			log.Println("Migrations applied successfully!")
+		}
 	}
 	
 	mux := http.NewServeMux()
 
 	// Initialize dependencies
+	sentinelClient := configs.NewSentinelClient(cfg.SentinelURL)
 	configsRepo := configs.NewRepository(database)
-	configsService := configs.NewService(configsRepo)
+	configsService := configs.NewService(configsRepo, sentinelClient)
 	configsHandler := configs.NewHandler(configsService)
 
 	// Initialize Middleware
@@ -52,6 +46,7 @@ func main() {
 	mux.HandleFunc("/v1/validate", configsHandler.Validate) // No auth needed for local check check
 	mux.HandleFunc("/v1/configs", authMiddleware.RequireAPIKey(configsHandler.Create)) // Protected
 	mux.HandleFunc("/v1/rollback", authMiddleware.RequireAPIKey(configsHandler.Rollback)) // Protected
+	mux.HandleFunc("/fetch", configsHandler.FetchSource) // Internal/External fetch for UI
 
 
 	// Health check
@@ -77,7 +72,8 @@ func main() {
 	})
 
 	fmt.Println("Starting Configra API on :8080")
-	if err := http.ListenAndServe(":8080", mux); err != nil {
+	// Apply CORS middleware to everything
+	if err := http.ListenAndServe(":8080", middleware.CORS(mux)); err != nil {
 		log.Fatalf("Server failed to start: %v", err)
 	}
 }

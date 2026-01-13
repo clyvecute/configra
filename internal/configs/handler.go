@@ -111,3 +111,23 @@ func (h *Handler) Rollback(w http.ResponseWriter, r *http.Request) {
 
 	utils.WriteJSON(w, http.StatusOK, cfg)
 }
+
+type FetchRequest struct {
+	URL string `json:"url"`
+}
+
+func (h *Handler) FetchSource(w http.ResponseWriter, r *http.Request) {
+	var req FetchRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		utils.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+		return
+	}
+
+	data, err := h.service.FetchExternal(req.URL)
+	if err != nil {
+		utils.WriteJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+
+	utils.WriteJSON(w, http.StatusOK, data)
+}

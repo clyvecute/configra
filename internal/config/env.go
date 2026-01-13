@@ -7,13 +7,15 @@ import (
 )
 
 type AppConfig struct {
-	DB   db.Config
-	Port string
+	DB          db.Config
+	Port        string
+	SentinelURL string
 }
 
 func Load() AppConfig {
 	return AppConfig{
-		Port: getEnv("PORT", "8080"),
+		Port:        getEnv("PORT", "8080"),
+		SentinelURL: getEnv("SENTINEL_URL", "https://sentinelconfig.vercel.app/"), // Connected to Sentinel
 		DB: db.Config{
 			Host:     getEnv("DB_HOST", "localhost"),
 			Port:     getEnv("DB_PORT", "5432"),
