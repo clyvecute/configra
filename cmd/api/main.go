@@ -71,9 +71,9 @@ func main() {
 		json.NewEncoder(w).Encode(response)
 	})
 
-	fmt.Println("Starting Configra API on :8080")
+	fmt.Printf("Starting Configra API on :%s\n", cfg.Port)
 	// Apply CORS middleware to everything
-	if err := http.ListenAndServe(":8080", middleware.CORS(mux)); err != nil {
+	if err := http.ListenAndServe(":"+cfg.Port, middleware.CORS(mux)); err != nil {
 		log.Fatalf("Server failed to start: %v", err)
 	}
 }

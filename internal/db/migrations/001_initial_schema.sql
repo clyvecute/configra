@@ -1,12 +1,12 @@
 -- Up
-CREATE TABLE users (
+CREATE TABLE IF NOT EXISTS users (
     id SERIAL PRIMARY KEY,
     email VARCHAR(255) UNIQUE NOT NULL,
     password_hash VARCHAR(255) NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TABLE projects (
+CREATE TABLE IF NOT EXISTS projects (
     id SERIAL PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
     owner_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
@@ -14,7 +14,7 @@ CREATE TABLE projects (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TABLE environments (
+CREATE TABLE IF NOT EXISTS environments (
     id SERIAL PRIMARY KEY,
     project_id INTEGER REFERENCES projects(id) ON DELETE CASCADE,
     name VARCHAR(50) NOT NULL, -- e.g. "Production", "Staging"
@@ -23,7 +23,7 @@ CREATE TABLE environments (
     UNIQUE(project_id, slug)
 );
 
-CREATE TABLE configs (
+CREATE TABLE IF NOT EXISTS configs (
     id SERIAL PRIMARY KEY,
     project_id INTEGER REFERENCES projects(id) ON DELETE CASCADE,
     environment_id INTEGER REFERENCES environments(id) ON DELETE CASCADE,
@@ -33,7 +33,7 @@ CREATE TABLE configs (
     UNIQUE(project_id, environment_id, key)
 );
 
-CREATE TABLE config_versions (
+CREATE TABLE IF NOT EXISTS config_versions (
     id SERIAL PRIMARY KEY,
     config_id INTEGER REFERENCES configs(id) ON DELETE CASCADE,
     version INTEGER NOT NULL,
