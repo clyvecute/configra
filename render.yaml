@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: configra-api
+    env: docker
+    plan: free
+    repo: https://github.com/clyvecute/configra
+    envVars:
+      - key: PORT
+        value: 8080
+      - key: DATABASE_URL
+        fromDatabase:
+          name: configra-db
+          property: connectionString
+      - key: SENTINEL_URL
+        value: https://sentinelconfig.vercel.app/
+
+databases:
+  - name: configra-db
+    databaseName: configra
+    user: configra_user
+    plan: free
+    ipAllowList: [] # Allow internal access only
