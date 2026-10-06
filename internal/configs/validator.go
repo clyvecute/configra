@@ -1,4 +1,4 @@
-﻿package configs
+package configs
 
 import (
 	"fmt"
@@ -10,12 +10,12 @@ import (
 type DataType string
 
 const (
-	TypeString  DataType = "string"
-	TypeInt     DataType = "int"
-	TypeFloat   DataType = "float"
-	TypeBool    DataType = "bool"
-	TypeEnum    DataType = "enum"
-	TypeJSON    DataType = "json" // For complex nested objects
+	TypeString DataType = "string"
+	TypeInt    DataType = "int"
+	TypeFloat  DataType = "float"
+	TypeBool   DataType = "bool"
+	TypeEnum   DataType = "enum"
+	TypeJSON   DataType = "json" // For complex nested objects
 )
 
 // FieldRule defines the validation logic for a single configuration key.
@@ -24,8 +24,8 @@ type FieldRule struct {
 	Required    bool          `json:"required"`
 	Description string        `json:"description,omitempty"`
 	Default     interface{}   `json:"default,omitempty"`
-	Min         *float64      `json:"min,omitempty"`  // For int/float
-	Max         *float64      `json:"max,omitempty"`  // For int/float
+	Min         *float64      `json:"min,omitempty"`     // For int/float
+	Max         *float64      `json:"max,omitempty"`     // For int/float
 	Allowed     []interface{} `json:"allowed,omitempty"` // For enum
 }
 
@@ -119,7 +119,11 @@ func isValidType(val interface{}, expected DataType) bool {
 		return false
 	case TypeJSON:
 		// Map or slice
-		kind := reflect.TypeOf(val).Kind()
+		t := reflect.TypeOf(val)
+		if t == nil {
+			return false
+		}
+		kind := t.Kind()
 		return kind == reflect.Map || kind == reflect.Slice
 	default:
 		return false

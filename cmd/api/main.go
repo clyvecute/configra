@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -21,7 +20,7 @@ func main() {
 		log.Printf("Warning: Failed to connect to DB: %v. Database-backed features will be disabled.", err)
 	} else {
 		defer database.Close()
-		
+
 		// Auto-migrate database
 		log.Println("Running database migrations...")
 		if err := db.Migrate(database, "./internal/db/migrations"); err != nil {
@@ -30,7 +29,7 @@ func main() {
 			log.Println("Migrations applied successfully!")
 		}
 	}
-	
+
 	mux := http.NewServeMux()
 
 	// Initialize dependencies
@@ -43,11 +42,19 @@ func main() {
 	authMiddleware := middleware.NewAuthMiddleware(database)
 
 	// Register routes
-	mux.HandleFunc("/v1/validate", configsHandler.Validate) // No auth needed for local check check
-	mux.HandleFunc("/v1/configs", authMiddleware.RequireAPIKey(configsHandler.Create)) // Protected
+	mux.HandleFunc("/v1/validate", configsHandler.Validate)                               // No auth needed for local check
+	mux.HandleFunc("/v1/configs", authMiddleware.RequireAPIKey(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodPost:
+			configsHandler.Create(w, r)
+		case http.MethodGet:
+			configsHandler.Get(w, r)
+		default:
+			w.WriteHeader(http.StatusMethodNotAllowed)
+		}
+	}))                                                                                    // Protected
 	mux.HandleFunc("/v1/rollback", authMiddleware.RequireAPIKey(configsHandler.Rollback)) // Protected
-	mux.HandleFunc("/fetch", configsHandler.FetchSource) // Internal/External fetch for UI
-
+	mux.HandleFunc("/fetch", authMiddleware.RequireAPIKey(configsHandler.FetchSource))    // Protected external fetch
 
 	// Health check
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
@@ -55,20 +62,20 @@ func main() {
 		w.Write([]byte("ok"))
 	})
 
-	// Root handler (Landing Page) - Friendly message for browser/portfolio visitors
+	// Dashboard handler — Space White minimalist control center
+	mux.HandleFunc("/dashboard", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Write([]byte(dashboardPageHTML))
+	})
+
+	// Root handler — HTML landing page for browser/portfolio visitors
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/" {
 			http.NotFound(w, r)
 			return
 		}
-		w.Header().Set("Content-Type", "application/json")
-		response := map[string]string{
-			"service": "Configra API",
-			"status":  "running",
-			"docs":    "This is a JSON-only API. Use the CLI or API endpoints.",
-			"endpoints": "/health, /v1/validate, /v1/configs, /v1/rollback",
-		}
-		json.NewEncoder(w).Encode(response)
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Write([]byte(landingPageHTML))
 	})
 
 	fmt.Printf("Starting Configra API on :%s\n", cfg.Port)

@@ -1,7 +1,8 @@
-﻿package configs
+package configs
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 
 	"github.com/clyvecute/configra/internal/middleware"
@@ -106,6 +107,46 @@ func (h *Handler) Rollback(w http.ResponseWriter, r *http.Request) {
 	cfg, err := h.service.RollbackConfig(projectID, req.EnvID, req.Key, req.TargetVersion, 1) // default admin ID
 	if err != nil {
 		utils.WriteJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+
+	utils.WriteJSON(w, http.StatusOK, cfg)
+}
+
+// Get retrieves the latest config version for a given project/env/key.
+// Query params: key (required), env_id (required).
+func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		utils.WriteJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+		return
+	}
+
+	key := r.URL.Query().Get("key")
+	envIDStr := r.URL.Query().Get("env_id")
+	if key == "" || envIDStr == "" {
+		utils.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "missing required query params: key, env_id"})
+		return
+	}
+
+	var envID int
+	if _, err := fmt.Sscanf(envIDStr, "%d", &envID); err != nil || envID <= 0 {
+		utils.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "env_id must be a positive integer"})
+		return
+	}
+
+	projectID, ok := r.Context().Value(middleware.ProjectIDKey).(int)
+	if !ok || projectID == 0 {
+		utils.WriteJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized project scope"})
+		return
+	}
+
+	cfg, err := h.service.GetConfig(projectID, envID, key)
+	if err != nil {
+		utils.WriteJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	if cfg == nil {
+		utils.WriteJSON(w, http.StatusNotFound, map[string]string{"error": "config not found"})
 		return
 	}
 

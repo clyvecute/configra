@@ -1,4 +1,4 @@
-﻿package configs
+package configs
 
 import (
 	"database/sql"
@@ -34,8 +34,6 @@ func (m *Map) Scan(value interface{}) error {
 	return json.Unmarshal(b, &m)
 }
 
-
-
 type Repository struct {
 	db *sql.DB
 }
@@ -64,7 +62,7 @@ func (r *Repository) CreateOrUpdate(projectID, envID int, key string, data, sche
 		ON CONFLICT (project_id, environment_id, key) DO UPDATE 
 			SET updated_at = NOW()
 		RETURNING id`, projectID, envID, key).Scan(&configID)
-	
+
 	if err != nil {
 		return nil, fmt.Errorf("failed to upsert config parent: %v", err)
 	}
@@ -118,14 +116,14 @@ func (r *Repository) GetLatest(projectID, envID int, key string) (*Config, error
 		WHERE c.project_id = $1 AND c.environment_id = $2 AND c.key = $3
 		ORDER BY v.version DESC
 		LIMIT 1`
-	
+
 	row := r.db.QueryRow(query, projectID, envID, key)
 
 	var c Config
 	c.ProjectID = projectID
 	c.EnvID = envID
 	c.Key = key
-	
+
 	var dataBytes, schemaBytes []byte
 
 	if err := row.Scan(&c.ID, &c.UpdatedAt, &c.Version, &dataBytes, &schemaBytes); err != nil {
@@ -140,6 +138,7 @@ func (r *Repository) GetLatest(projectID, envID int, key string) (*Config, error
 
 	return &c, nil
 }
+
 // Rollback finds a specific version of a config and creates a NEW version (latest + 1)
 // with that old content. This preserves history (immutable).
 func (r *Repository) Rollback(projectID, envID int, key string, targetVersion int, userID int) (*Config, error) {
@@ -174,11 +173,11 @@ func (r *Repository) Rollback(projectID, envID int, key string, targetVersion in
 
 	// 3. Get current max version
 	var currentVersion int
-	err = tx.QueryRow(`SELECT MAX(version) FROM config_versions WHERE config_id = $1`, configID).Scan(&currentVersion)
+	err = tx.QueryRow(`SELECT COALESCE(MAX(version), 0) FROM config_versions WHERE config_id = $1`, configID).Scan(&currentVersion)
 	if err != nil {
 		return nil, err
 	}
-	
+
 	newVersion := currentVersion + 1
 
 	// 4. Insert new version as a copy of the old one

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"strconv"
 
 	"github.com/clyvecute/configra/internal/config"
 	"github.com/clyvecute/configra/internal/configs"
@@ -27,12 +28,15 @@ func main() {
 	pushCmd := flag.NewFlagSet("push", flag.ExitOnError)
 	_ = pushCmd.String("file", "config.json", "Config file to push")
 	_ = pushCmd.String("project", "", "Project ID")
+	_ = pushCmd.String("key", "feature_flags", "Config key name to push under")
+	_ = pushCmd.String("env", "1", "Environment ID")
 	pushHost := pushCmd.String("host", "http://localhost:8080", "API Host URL")
 
 	fetchCmd := flag.NewFlagSet("fetch", flag.ExitOnError)
 	_ = fetchCmd.String("project", "", "Project ID")
-	_ = fetchCmd.String("env", "prod", "Environment")
-	// fetchHost := fetchCmd.String("host", "http://localhost:8080", "API Host URL") // Uncomment when implementing fetch
+	_ = fetchCmd.String("key", "", "Config key to fetch")
+	_ = fetchCmd.String("env", "1", "Environment ID")
+	fetchHost := fetchCmd.String("host", "http://localhost:8080", "API Host URL")
 
 	rollbackCmd := flag.NewFlagSet("rollback", flag.ExitOnError)
 	_ = rollbackCmd.String("project", "", "Project ID")
@@ -54,15 +58,44 @@ func main() {
 		if p := pushCmd.Lookup("project"); p != nil {
 			proj = p.Value.String()
 		}
-		runPush(file, proj, *pushHost)
+		cfgKey := "feature_flags"
+		if k := pushCmd.Lookup("key"); k != nil {
+			cfgKey = k.Value.String()
+		}
+		envID := "1"
+		if e := pushCmd.Lookup("env"); e != nil {
+			envID = e.Value.String()
+		}
+		runPush(file, proj, cfgKey, envID, *pushHost)
 	case "fetch":
 		fetchCmd.Parse(os.Args[2:])
-		fmt.Println("Fetch logic to be implemented. Would fetch from API.")
+		proj := ""
+		if p := fetchCmd.Lookup("project"); p != nil {
+			proj = p.Value.String()
+		}
+		cfgKey := ""
+		if k := fetchCmd.Lookup("key"); k != nil {
+			cfgKey = k.Value.String()
+		}
+		envID := "1"
+		if e := fetchCmd.Lookup("env"); e != nil {
+			envID = e.Value.String()
+		}
+		runFetch(proj, cfgKey, envID, *fetchHost)
 	case "rollback":
 		rollbackCmd.Parse(os.Args[2:])
-		p := ""; if f := rollbackCmd.Lookup("project"); f != nil { p = f.Value.String() }
-		k := ""; if f := rollbackCmd.Lookup("key"); f != nil { k = f.Value.String() }
-		v := ""; if f := rollbackCmd.Lookup("version"); f != nil { v = f.Value.String() }
+		p := ""
+		if f := rollbackCmd.Lookup("project"); f != nil {
+			p = f.Value.String()
+		}
+		k := ""
+		if f := rollbackCmd.Lookup("key"); f != nil {
+			k = f.Value.String()
+		}
+		v := ""
+		if f := rollbackCmd.Lookup("version"); f != nil {
+			v = f.Value.String()
+		}
 		runRollback(p, k, v, *rollbackHost)
 	case "migrate":
 		// Ensure we load config to get DB creds
@@ -76,10 +109,11 @@ func main() {
 func printUsage() {
 	fmt.Println("Configra CLI")
 	fmt.Println("Usage:")
-	fmt.Println("  validate -schema <path> -config <path>   Validate a config against a schema locally")
-	fmt.Println("  push     -file <path> -project <id>      Push a config to the server")
-	fmt.Println("  fetch    -project <id> -env <name>       Fetch active config from server")
-	fmt.Println("  migrate                                  Run database migrations")
+	fmt.Println("  validate -schema <path> -config <path>                          Validate a config against a schema locally")
+	fmt.Println("  push     -file <path> -project <id> -key <key> -env <env_id>   Push a config to the server")
+	fmt.Println("  fetch    -project <id> -key <key> -env <env_id>                Fetch active config from server")
+	fmt.Println("  rollback -project <id> -key <key> -version <n>                 Roll back to a specific version")
+	fmt.Println("  migrate                                                          Run database migrations")
 }
 
 func runMigrate() {
@@ -95,7 +129,7 @@ func runMigrate() {
 	cwd, _ := os.Getwd()
 	// Assumption: running from project root or having migrations folder relative
 	migrationsDir := filepath.Join(cwd, "internal", "db", "migrations")
-	
+
 	if err := db.Migrate(database, migrationsDir); err != nil {
 		fmt.Printf("Migration failed: %v\n", err)
 		os.Exit(1)
@@ -141,11 +175,9 @@ func runValidate(schemaFile, configFile string) {
 	fmt.Println("\u2705 Configuration is VALID.")
 }
 
-func runPush(configFile, projectID, host string) {
-	// 1. Read the config file and assumed schema file (for now co-located or we should bundle them)
-	// For this demo, let's assume schema.json is in the same dir
+func runPush(configFile, projectID, cfgKey, envIDStr, host string) {
 	schemaFile := "schema.json"
-	
+
 	cBytes, err := os.ReadFile(configFile)
 	if err != nil {
 		fmt.Printf("Error reading config: %v\n", err)
@@ -161,8 +193,8 @@ func runPush(configFile, projectID, host string) {
 	var schemaMap map[string]interface{}
 	json.Unmarshal(cBytes, &configMap)
 	json.Unmarshal(sBytes, &schemaMap)
-	
-	// 2. Validate locally first
+
+	// Validate locally first
 	var schemaStruct configs.Schema
 	json.Unmarshal(sBytes, &schemaStruct)
 	if err := configs.Validate(schemaStruct, configMap); err != nil {
@@ -170,22 +202,30 @@ func runPush(configFile, projectID, host string) {
 		os.Exit(1)
 	}
 
-	// 3. Send to API
-	// Construct payload matching CreateRequest in handler
-	// We need to parse projectID to int, let's default to 1 if empty for push demo
-	pID := 1 // Default
-	eID := 1 // Default env
-	
+	pID, err := strconv.Atoi(projectID)
+	if err != nil || pID <= 0 {
+		fmt.Println("A valid positive -project ID is required")
+		os.Exit(1)
+	}
+	eID, err := strconv.Atoi(envIDStr)
+	if err != nil || eID <= 0 {
+		fmt.Println("A valid positive -env ID is required")
+		os.Exit(1)
+	}
+	if cfgKey == "" {
+		fmt.Println("-key is required")
+		os.Exit(1)
+	}
+
 	payload := map[string]interface{}{
 		"project_id": pID,
 		"env_id":     eID,
-		"key":        "feature_flags", // Default key for now
+		"key":        cfgKey,
 		"data":       configMap,
 		"schema":     schemaMap,
 	}
-	
+
 	body, _ := json.Marshal(payload)
-	
 	resp, err := http.Post(fmt.Sprintf("%s/v1/configs", host), "application/json", bytes.NewBuffer(body))
 	if err != nil {
 		fmt.Printf("Failed to connect to API: %v\n", err)
@@ -195,16 +235,72 @@ func runPush(configFile, projectID, host string) {
 
 	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
 		fmt.Printf("API returned error: %s\n", resp.Status)
-		// Read body for details
 		return
 	}
 
 	fmt.Println("Successfully pushed config to server!")
 }
 
+func runFetch(projectID, key, envIDStr, host string) {
+	pID, err := strconv.Atoi(projectID)
+	if err != nil || pID <= 0 {
+		fmt.Println("A valid positive -project ID is required")
+		os.Exit(1)
+	}
+	eID, err := strconv.Atoi(envIDStr)
+	if err != nil || eID <= 0 {
+		fmt.Println("A valid positive -env ID is required")
+		os.Exit(1)
+	}
+	if key == "" {
+		fmt.Println("-key is required")
+		os.Exit(1)
+	}
+
+	apiKey := os.Getenv("CONFIGRA_API_KEY")
+	if apiKey == "" {
+		fmt.Println("CONFIGRA_API_KEY environment variable is not set")
+		os.Exit(1)
+	}
+
+	url := fmt.Sprintf("%s/v1/configs?key=%s&env_id=%d", host, key, eID)
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		fmt.Printf("Failed to build request: %v\n", err)
+		os.Exit(1)
+	}
+	req.Header.Set("X-API-Key", apiKey)
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		fmt.Printf("Failed to connect to API: %v\n", err)
+		os.Exit(1)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		fmt.Printf("Fetch failed: %s\n", resp.Status)
+		os.Exit(1)
+	}
+
+	var result map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		fmt.Printf("Failed to decode response: %v\n", err)
+		os.Exit(1)
+	}
+
+	formatted, _ := json.MarshalIndent(result, "", "  ")
+	fmt.Println(string(formatted))
+}
+
 func runRollback(projectID, key, version, host string) {
 	// Simple conversions
-	pID := 1 // default
+	pID, err := strconv.Atoi(projectID)
+	if err != nil || pID <= 0 {
+		fmt.Println("A valid positive -project ID is required")
+		os.Exit(1)
+	}
 	vID := 0
 	fmt.Sscanf(version, "%d", &vID)
 
@@ -232,4 +328,3 @@ func runRollback(projectID, key, version, host string) {
 }
 
 // Add these imports at the top if missing: bytes, net/http
-
