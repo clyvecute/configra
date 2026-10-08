@@ -43,6 +43,7 @@ func main() {
 	_ = rollbackCmd.String("key", "", "Config Key")
 	_ = rollbackCmd.String("version", "", "Target Version to restore")
 	rollbackHost := rollbackCmd.String("host", "http://localhost:8080", "API Host URL")
+	rollbackEnv := rollbackCmd.String("env", "1", "Environment ID")
 
 	switch os.Args[1] {
 	case "validate":
@@ -96,7 +97,11 @@ func main() {
 		if f := rollbackCmd.Lookup("version"); f != nil {
 			v = f.Value.String()
 		}
-		runRollback(p, k, v, *rollbackHost)
+		e := "1"
+		if rollbackEnv != nil {
+			e = *rollbackEnv
+		}
+		runRollback(p, k, v, e, *rollbackHost)
 	case "migrate":
 		// Ensure we load config to get DB creds
 		runMigrate()
@@ -263,7 +268,7 @@ func runFetch(projectID, key, envIDStr, host string) {
 		os.Exit(1)
 	}
 
-	url := fmt.Sprintf("%s/v1/configs?key=%s&env_id=%d", host, key, eID)
+	url := fmt.Sprintf("%s/v1/configs/%s?env_id=%d", host, key, eID)
 	req, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
 		fmt.Printf("Failed to build request: %v\n", err)
@@ -294,7 +299,7 @@ func runFetch(projectID, key, envIDStr, host string) {
 	fmt.Println(string(formatted))
 }
 
-func runRollback(projectID, key, version, host string) {
+func runRollback(projectID, key, version, env, host string) {
 	// Simple conversions
 	pID, err := strconv.Atoi(projectID)
 	if err != nil || pID <= 0 {
@@ -302,17 +307,40 @@ func runRollback(projectID, key, version, host string) {
 		os.Exit(1)
 	}
 	vID := 0
-	fmt.Sscanf(version, "%d", &vID)
+	if n, e := strconv.Atoi(version); e == nil {
+		vID = n
+	}
+	eID, err := strconv.Atoi(env)
+	if err != nil || eID <= 0 {
+		fmt.Println("A valid positive -env ID is required")
+		os.Exit(1)
+	}
+	if key == "" || vID <= 0 {
+		fmt.Println("-key and a positive -version are required")
+		os.Exit(1)
+	}
+	apiKey := os.Getenv("CONFIGRA_API_KEY")
+	if apiKey == "" {
+		fmt.Println("CONFIGRA_API_KEY environment variable is not set")
+		os.Exit(1)
+	}
 
 	payload := map[string]interface{}{
 		"project_id":     pID,
-		"env_id":         1, // default
+		"env_id":         eID,
 		"key":            key,
 		"target_version": vID,
 	}
 
 	body, _ := json.Marshal(payload)
-	resp, err := http.Post(fmt.Sprintf("%s/v1/rollback", host), "application/json", bytes.NewBuffer(body))
+	request, err := http.NewRequest(http.MethodPost, fmt.Sprintf("%s/v1/configs/%s/rollback", host, key), bytes.NewBuffer(body))
+	if err != nil {
+		fmt.Printf("Failed to build request: %v\n", err)
+		os.Exit(1)
+	}
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("X-API-Key", apiKey)
+	resp, err := (&http.Client{}).Do(request)
 	if err != nil {
 		fmt.Printf("Failed to connect to API: %v\n", err)
 		os.Exit(1)

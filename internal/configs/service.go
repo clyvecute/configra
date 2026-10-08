@@ -1,4 +1,4 @@
-﻿package configs
+package configs
 
 import (
 	"encoding/json"
@@ -33,8 +33,8 @@ func (s *Service) CreateConfig(projectID, envID int, key string, data, schema Ma
 	if s.sentinel != nil && s.sentinel.BaseURL != "" {
 		valid, errs, err := s.sentinel.Lint(schemaStruct, data)
 		if err != nil {
-			// We log but don't necessarily block if Sentinel is down, 
-			// depending on how strict we want to be. 
+			// We log but don't necessarily block if Sentinel is down,
+			// depending on how strict we want to be.
 			// For "premium" feel, we might want to block or at least flag it.
 			fmt.Printf("Sentinel linting error (skipped): %v\n", err)
 		} else if !valid {
@@ -47,6 +47,13 @@ func (s *Service) CreateConfig(projectID, envID int, key string, data, schema Ma
 
 func (s *Service) GetConfig(projectID, envID int, key string) (*Config, error) {
 	return s.repo.GetLatest(projectID, envID, key)
+}
+
+func (s *Service) GetVersion(projectID, envID int, key string, version int) (*Config, error) {
+	return s.repo.GetVersion(projectID, envID, key, version)
+}
+func (s *Service) ListVersions(projectID, envID int, key string) ([]Version, error) {
+	return s.repo.ListVersions(projectID, envID, key)
 }
 
 func (s *Service) RollbackConfig(projectID, envID int, key string, targetVersion int, userID int) (*Config, error) {
@@ -76,4 +83,3 @@ func (s *Service) FetchExternal(url string) (map[string]interface{}, error) {
 
 	return data, nil
 }
-

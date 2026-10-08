@@ -4,6 +4,7 @@ COPY go.mod ./
 RUN go mod download
 COPY . .
 RUN go build -o main ./cmd/api
+COPY openapi.yaml ./openapi.yaml
 
 # Ensure migrations are available to the binary
 # The binary runs from /app, so ./internal/db/migrations will resolve to /app/internal/db/migrations

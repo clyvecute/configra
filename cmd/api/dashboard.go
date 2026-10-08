@@ -657,6 +657,15 @@ const dashboardPageHTML = `<!DOCTYPE html>
               </button>
             </div>
 
+            <div class="form-group" style="margin-top:1rem;">
+              <label class="form-label">Version history</label>
+              <button class="btn btn-secondary btn-sm" onclick="loadHistory()">Browse versions</button>
+              <select id="historyVersion" class="select-input" onchange="showVersionDiff()" style="margin-top:.5rem"><option value="">Select a version</option></select>
+              <button class="btn btn-secondary btn-sm" onclick="showVersionDiff()">Compare with current</button>
+              <button class="btn btn-secondary btn-sm" onclick="rollbackSelected()">Rollback selected version</button>
+              <pre class="code-block" id="historyResult" style="margin-top:.5rem;display:none"></pre>
+            </div>
+
             <div id="fetchResultArea" style="margin-top: 1.25rem; display: none;">
               <div class="result-meta">
                 <span class="badge badge-indigo" id="fetchVerBadge">Version: --</span>
@@ -833,7 +842,7 @@ const dashboardPageHTML = `<!DOCTYPE html>
       resArea.style.display = "block";
 
       try {
-        const resp = await fetch('/v1/configs?key=' + encodeURIComponent(key) + '&env_id=' + envId, {
+        const resp = await fetch('/v1/configs/' + encodeURIComponent(key) + '?env_id=' + envId, {
           headers: { 'X-API-Key': apiKey }
         });
         const data = await resp.json();
@@ -853,6 +862,27 @@ const dashboardPageHTML = `<!DOCTYPE html>
       } catch (err) {
         codeElem.innerText = "Error: " + err.message;
       }
+    }
+
+    async function loadHistory() {
+      const key=document.getElementById('fetchKeyInput').value.trim(), apiKey=getApiKey(), envId=getEnvId();
+      const select=document.getElementById('historyVersion'), result=document.getElementById('historyResult');
+      const resp=await fetch('/v1/configs/'+encodeURIComponent(key)+'/versions?env_id='+envId,{headers:{'X-API-Key':apiKey}}); const versions=await resp.json();
+      if(!resp.ok){result.style.display='block';result.innerText=versions.error||'Unable to load history';return;}
+      select.innerHTML='<option value="">Select a version</option>'+versions.map(v=>'<option value="'+v.version+'">v'+v.version+' · '+new Date(v.created_at).toLocaleString()+' · author '+(v.author_id||'unknown')+'</option>').join('');
+      result.style.display='block'; result.innerText=versions.length+' versions loaded. Select one and compare or roll back.';
+    }
+    async function showVersionDiff() {
+      const key=document.getElementById('fetchKeyInput').value.trim(), selected=document.getElementById('historyVersion').value, result=document.getElementById('historyResult'); if(!selected)return;
+      const apiKey=getApiKey(), envId=getEnvId();
+      const latestResp=await fetch('/v1/configs/'+encodeURIComponent(key)+'?env_id='+envId,{headers:{'X-API-Key':apiKey}}); const latest=await latestResp.json();
+      const resp=await fetch('/v1/configs/'+encodeURIComponent(key)+'/diff?env_id='+envId+'&from='+selected+'&to='+latest.version,{headers:{'X-API-Key':apiKey}}); const diff=await resp.json(); result.style.display='block'; result.innerText=JSON.stringify(diff,null,2);
+    }
+    async function rollbackSelected() {
+      const key=document.getElementById('fetchKeyInput').value.trim(), version=document.getElementById('historyVersion').value; if(!version)return alert('Select a version first.');
+      if(!confirm('Roll back '+key+' to version '+version+'? This publishes a new version with that content.'))return;
+      const resp=await fetch('/v1/configs/'+encodeURIComponent(key)+'/rollback',{method:'POST',headers:{'Content-Type':'application/json','X-API-Key':getApiKey()},body:JSON.stringify({env_id:getEnvId(),target_version:Number(version)})}); const body=await resp.json();
+      document.getElementById('historyResult').style.display='block'; document.getElementById('historyResult').innerText=JSON.stringify(body,null,2);
     }
 
     // 2. Format JSON helper

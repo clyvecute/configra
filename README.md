@@ -1,9 +1,7 @@
 # Configra
-### Reliable Configuration, Without the Complexity.
+### Versioned, validated config with one-click rollback.
 
-**Configra** is a cloud-native configuration management and feature flag service designed for high-velocity engineering teams. It provides immutable versioning, schema validation, and atomic rollbacks to eliminate configuration-induced outages.
-
-Built on strict "Twelve-Factor App" principles, Configra ensures 100% parity between local development and cloud production environments.
+**Configra** stores versioned application configuration, validates updates against a schema, and lets teams roll back through the API or dashboard.
 
 ---
 
@@ -11,15 +9,13 @@ Built on strict "Twelve-Factor App" principles, Configra ensures 100% parity bet
 Configuration errors are a leading cause of production incidents. Existing solutions are often:
 1.  **Too Complex**: Requiring heavy enterprise SaaS contracts or complex Kubernetes operators.
 2.  **Too Risky**: Allowing "blind" updates without validation or easy rollback paths.
-3.  **Too Fragmented**: Splitting secrets, flags, and JSON config across different tools.
 
 ## The Solution
 Configra treats configuration as a first-class citizen with the same rigor as compiled code.
 
-*   **Immutable History**: Every change creates a new version. You can always see *who* changed *what* and *when*.
+*   **Immutable History**: Every change creates a new version with its timestamp and the project owner or project credential label.
 *   **Schema Enforcement**: Configurations are validated against strict JSON schemas before they are ever accepted.
 *   **Zero-Downtime Rollbacks**: Instantly revert to any previous known-good state via the CLI or API.
-*   **Environment Parity**: The exact same Go binary runs locally (Docker Compose) and in production (Google Cloud Run).
 
 ---
 
@@ -57,7 +53,7 @@ Run the complete stack with Docker Compose. This starts the API and a local Post
 docker-compose up --build
 ```
 
-The API will be available at `http://localhost:8080`.
+The API will be available at `http://localhost:8080`. Browse the OpenAPI document at `http://localhost:8080/docs`.
 
 ### 2. Using the CLI
 Configra comes with a dedicated CLI for local workflows.
@@ -108,11 +104,7 @@ For a "Vercel-like" experience for backend containers:
 
 ## API Reference
 
-| Method | Endpoint | Description |
-| :--- | :--- | :--- |
-| `POST` | `/v1/validate` | Dry-run validation of a config payload. |
-| `POST` | `/v1/configs` | Create a new configuration version. |
-| `GET` | `/health` | Service health check. |
+The OpenAPI 3.1 document is served at `/docs` and available in [openapi.yaml](openapi.yaml). Protected routes require `X-API-Key`.
 
 ---
 

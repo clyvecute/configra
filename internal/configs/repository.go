@@ -20,6 +20,15 @@ type Config struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
+type Version struct {
+	Version   int       `json:"version"`
+	Data      Map       `json:"data"`
+	Schema    Map       `json:"schema"`
+	AuthorID  *int      `json:"author_id"`
+	Author    string    `json:"author,omitempty"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
 type Map map[string]interface{}
 
 func (m Map) Value() (driver.Value, error) {
@@ -65,6 +74,11 @@ func (r *Repository) CreateOrUpdate(projectID, envID int, key string, data, sche
 
 	if err != nil {
 		return nil, fmt.Errorf("failed to upsert config parent: %v", err)
+	}
+	// Serialize version allocation for this key. The upsert row lock remains held
+	// until commit, so concurrent writers cannot allocate duplicate versions.
+	if err = tx.QueryRow(`SELECT id FROM configs WHERE id=$1 FOR UPDATE`, configID).Scan(&configID); err != nil {
+		return nil, err
 	}
 
 	// 2. Get latest version number
@@ -139,6 +153,59 @@ func (r *Repository) GetLatest(projectID, envID int, key string) (*Config, error
 	return &c, nil
 }
 
+func (r *Repository) GetVersion(projectID, envID int, key string, version int) (*Config, error) {
+	if r.db == nil {
+		return nil, fmt.Errorf("database connection unavailable")
+	}
+	var c Config
+	var dataBytes, schemaBytes []byte
+	err := r.db.QueryRow(`SELECT c.id, c.project_id, c.environment_id, c.key, c.updated_at, v.version, v.data, v.schema
+		FROM configs c JOIN config_versions v ON c.id=v.config_id
+		WHERE c.project_id=$1 AND c.environment_id=$2 AND c.key=$3 AND v.version=$4`, projectID, envID, key, version).
+		Scan(&c.ID, &c.ProjectID, &c.EnvID, &c.Key, &c.UpdatedAt, &c.Version, &dataBytes, &schemaBytes)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if err = json.Unmarshal(dataBytes, &c.Data); err != nil {
+		return nil, err
+	}
+	if err = json.Unmarshal(schemaBytes, &c.Schema); err != nil {
+		return nil, err
+	}
+	return &c, nil
+}
+
+func (r *Repository) ListVersions(projectID, envID int, key string) ([]Version, error) {
+	if r.db == nil {
+		return nil, fmt.Errorf("database connection unavailable")
+	}
+	rows, err := r.db.Query(`SELECT v.version, v.data, v.schema, v.created_by, v.created_at, COALESCE(u.email, CASE WHEN v.created_by IS NULL THEN 'system' ELSE 'user:' || v.created_by::text END) FROM configs c
+		JOIN config_versions v ON c.id=v.config_id LEFT JOIN users u ON u.id=v.created_by WHERE c.project_id=$1 AND c.environment_id=$2 AND c.key=$3 ORDER BY v.version DESC`, projectID, envID, key)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	versions := []Version{}
+	for rows.Next() {
+		var v Version
+		var d, s []byte
+		if err = rows.Scan(&v.Version, &d, &s, &v.AuthorID, &v.CreatedAt, &v.Author); err != nil {
+			return nil, err
+		}
+		if err = json.Unmarshal(d, &v.Data); err != nil {
+			return nil, err
+		}
+		if err = json.Unmarshal(s, &v.Schema); err != nil {
+			return nil, err
+		}
+		versions = append(versions, v)
+	}
+	return versions, rows.Err()
+}
+
 // Rollback finds a specific version of a config and creates a NEW version (latest + 1)
 // with that old content. This preserves history (immutable).
 func (r *Repository) Rollback(projectID, envID int, key string, targetVersion int, userID int) (*Config, error) {
@@ -155,7 +222,7 @@ func (r *Repository) Rollback(projectID, envID int, key string, targetVersion in
 	var configID int
 	err = tx.QueryRow(`
 		SELECT id FROM configs 
-		WHERE project_id = $1 AND environment_id = $2 AND key = $3`,
+		WHERE project_id = $1 AND environment_id = $2 AND key = $3 FOR UPDATE`,
 		projectID, envID, key).Scan(&configID)
 	if err != nil {
 		return nil, fmt.Errorf("config not found: %v", err)
@@ -187,6 +254,9 @@ func (r *Repository) Rollback(projectID, envID int, key string, targetVersion in
 		configID, newVersion, oldData, oldSchema, userID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create rollback version: %v", err)
+	}
+	if _, err = tx.Exec(`UPDATE configs SET updated_at=NOW() WHERE id=$1`, configID); err != nil {
+		return nil, err
 	}
 
 	// 5. Commit

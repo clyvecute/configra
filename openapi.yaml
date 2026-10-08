@@ -1,0 +1,80 @@
+openapi: 3.1.0
+info:
+  title: Configra API
+  version: 0.1.0
+  description: Versioned, schema-validated application configuration with rollback.
+servers:
+  - url: /
+security:
+  - ApiKeyAuth: []
+paths:
+  /v1/validate:
+    post:
+      security: []
+      summary: Validate configuration data against a schema
+      responses:
+        '200': { description: Configuration is valid }
+        '400': { description: Validation failed }
+  /v1/configs:
+    post:
+      summary: Publish a new version
+      responses:
+        '201': { description: Version created }
+  /v1/configs/{key}:
+    get:
+      summary: Read latest or selected version
+      parameters:
+        - {$ref: '#/components/parameters/Key'}
+        - {name: env_id, in: query, required: true, schema: {type: integer, minimum: 1}}
+        - {name: version, in: query, schema: {type: integer, minimum: 1}}
+      responses:
+        '200': {description: Configuration version}
+        '404': {description: Not found}
+  /v1/configs/{key}/versions:
+    get:
+      summary: List versions with author and timestamp
+      parameters:
+        - {$ref: '#/components/parameters/Key'}
+        - {name: env_id, in: query, required: true, schema: {type: integer, minimum: 1}}
+      responses:
+        '200': {description: Version history}
+  /v1/configs/{key}/diff:
+    get:
+      summary: Compare two versions
+      parameters:
+        - {$ref: '#/components/parameters/Key'}
+        - {name: env_id, in: query, required: true, schema: {type: integer, minimum: 1}}
+        - {name: from, in: query, required: true, schema: {type: integer, minimum: 1}}
+        - {name: to, in: query, required: true, schema: {type: integer, minimum: 1}}
+      responses:
+        '200': {description: Changed keys and before/after data}
+  /v1/configs/{key}/rollback:
+    post:
+      summary: Publish a new version using the selected historical content
+      parameters:
+        - {$ref: '#/components/parameters/Key'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [env_id, target_version]
+              properties:
+                env_id: {type: integer, minimum: 1}
+                target_version: {type: integer, minimum: 1}
+      responses:
+        '200': {description: Rollback version published}
+        '400': {description: Invalid or missing target version}
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+  parameters:
+    Key:
+      name: key
+      in: path
+      required: true
+      schema: {type: string}
