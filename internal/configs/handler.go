@@ -2,9 +2,11 @@ package configs
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/clyvecute/configra/internal/middleware"
 	"github.com/clyvecute/configra/pkg/utils"
@@ -73,6 +75,11 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 	actorID, _ := r.Context().Value(middleware.ActorIDKey).(int)
 	cfg, err := h.service.CreateConfig(projectID, req.EnvID, req.Key, req.Data, req.Schema, actorID)
 	if err != nil {
+		var valErr *ValidationError
+		if errors.As(err, &valErr) || strings.Contains(err.Error(), "validation failed") {
+			utils.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			return
+		}
 		utils.WriteJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
@@ -208,6 +215,10 @@ func (h *Handler) Resource(w http.ResponseWriter, r *http.Request) {
 		utils.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "key is required"})
 		return
 	}
+	if r.Method == http.MethodPost && r.PathValue("action") == "rollback" {
+		h.RollbackREST(w, r)
+		return
+	}
 	envID, err := strconv.Atoi(r.URL.Query().Get("env_id"))
 	if err != nil || envID <= 0 {
 		utils.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "env_id must be a positive integer"})
@@ -254,8 +265,6 @@ func (h *Handler) Resource(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		utils.WriteJSON(w, http.StatusOK, map[string]interface{}{"from": from, "to": to, "before": a.Data, "after": b.Data, "changed": changed})
-	case r.Method == http.MethodPost && r.PathValue("action") == "rollback":
-		h.RollbackREST(w, r)
 	case r.Method == http.MethodGet:
 		version := r.URL.Query().Get("version")
 		cfg, err := h.service.GetConfig(projectID, envID, key)
