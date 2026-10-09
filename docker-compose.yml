@@ -18,6 +18,12 @@ services:
       DB_USER: user
       DB_PASSWORD: password
       DB_NAME: configra
+      DB_SSLMODE: disable
       SENTINEL_URL: ${SENTINEL_URL:-}
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/ready"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
     depends_on:
-      - db
+      - db

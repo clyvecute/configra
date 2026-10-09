@@ -17,14 +17,14 @@ func main() {
 	// Connect to DB
 	database, err := db.Connect(cfg.DB)
 	if err != nil {
-		log.Printf("Warning: Failed to connect to DB: %v. Database-backed features will be disabled.", err)
+		log.Fatalf("Failed to connect to database: %v", err)
 	} else {
 		defer database.Close()
 
 		// Auto-migrate database
 		log.Println("Running database migrations...")
 		if err := db.Migrate(database, "./internal/db/migrations"); err != nil {
-			log.Printf("Warning: Migration failed: %v", err)
+			log.Fatalf("Database migration failed: %v", err)
 		} else {
 			log.Println("Migrations applied successfully!")
 		}
@@ -64,10 +64,19 @@ func main() {
 	mux.HandleFunc("/v1/rollback", authMiddleware.RequireAPIKey(configsHandler.Rollback)) // Protected
 	mux.HandleFunc("/fetch", authMiddleware.RequireAPIKey(configsHandler.FetchSource))    // Protected external fetch
 
-	// Health check
+	// Liveness check: process is running.
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("ok"))
+	})
+	// Readiness check: required backing services are reachable.
+	mux.HandleFunc("/ready", func(w http.ResponseWriter, r *http.Request) {
+		if err := database.PingContext(r.Context()); err != nil {
+			http.Error(w, "database unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("ready"))
 	})
 
 	// Dashboard handler — Space White minimalist control center

@@ -2,6 +2,7 @@ package configs
 
 import (
 	"encoding/json"
+	"fmt"
 	"testing"
 )
 
@@ -87,6 +88,44 @@ func TestValidate(t *testing.T) {
 			err := Validate(schema, config)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("Validate() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestValidateDefaultsAndBoundaries(t *testing.T) {
+	min, max := float64(1), float64(10)
+	schema := Schema{Rules: map[string]FieldRule{
+		"count": {Type: TypeInt, Required: true, Min: &min, Max: &max},
+		"label": {Type: TypeString, Default: "default"},
+	}}
+	config := map[string]interface{}{"count": float64(10)}
+	if err := Validate(schema, config); err != nil {
+		t.Fatalf("valid boundary config: %v", err)
+	}
+	if config["label"] != "default" {
+		t.Fatalf("default not applied: %#v", config)
+	}
+
+	for _, value := range []interface{}{float64(0), float64(11), float64(1.5)} {
+		t.Run(fmt.Sprintf("invalid_%v", value), func(t *testing.T) {
+			got := map[string]interface{}{"count": value}
+			if err := Validate(schema, got); err == nil {
+				t.Fatalf("Validate(%v) unexpectedly succeeded", value)
+			}
+		})
+	}
+}
+
+func TestValidateRejectsUnknownAndInvalidEnum(t *testing.T) {
+	schema := Schema{Rules: map[string]FieldRule{"mode": {Type: TypeEnum, Allowed: []interface{}{"safe", "fast"}}}}
+	for name, config := range map[string]map[string]interface{}{
+		"unknown": {"mode": "safe", "extra": true},
+		"enum":    {"mode": "unsafe"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if err := Validate(schema, config); err == nil {
+				t.Fatal("expected validation error")
 			}
 		})
 	}

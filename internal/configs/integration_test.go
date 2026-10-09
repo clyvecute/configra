@@ -194,6 +194,35 @@ func TestConfigLifecycleAPI(t *testing.T) {
 	}
 }
 
+func TestMigrationRunnerIsIdempotent(t *testing.T) {
+	dsn := os.Getenv("CONFIGRA_TEST_DATABASE_URL")
+	if dsn == "" {
+		t.Skip("set CONFIGRA_TEST_DATABASE_URL to run PostgreSQL integration tests")
+	}
+	database, err := sql.Open("postgres", dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	if err := database.Ping(); err != nil {
+		t.Fatal(err)
+	}
+	migrations := filepath.Join("..", "db", "migrations")
+	if err := db.Migrate(database, migrations); err != nil {
+		t.Fatalf("first migration: %v", err)
+	}
+	if err := db.Migrate(database, migrations); err != nil {
+		t.Fatalf("second migration: %v", err)
+	}
+	var count int
+	if err := database.QueryRow(`SELECT count(*) FROM schema_migrations WHERE name='001_initial_schema.sql'`).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 1 {
+		t.Fatalf("migration applied rows=%d, want 1", count)
+	}
+}
+
 func mustRequest(t *testing.T, url string, body interface{}) *http.Request {
 	t.Helper()
 	data, err := json.Marshal(body)
@@ -207,6 +236,52 @@ func mustRequest(t *testing.T, url string, body interface{}) *http.Request {
 	req.Header.Set("X-API-Key", "integration-api-key")
 	req.Header.Set("Content-Type", "application/json")
 	return req
+}
+
+func TestAPIKeyAuthentication(t *testing.T) {
+	dsn := os.Getenv("CONFIGRA_TEST_DATABASE_URL")
+	if dsn == "" {
+		t.Skip("set CONFIGRA_TEST_DATABASE_URL to run PostgreSQL integration tests")
+	}
+	database, err := sql.Open("postgres", dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	if err := database.Ping(); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Migrate(database, filepath.Join("..", "db", "migrations")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.Exec(`TRUNCATE config_versions,configs,environments,projects,users RESTART IDENTITY CASCADE`); err != nil {
+		t.Fatal(err)
+	}
+	var userID int
+	if err := database.QueryRow(`INSERT INTO users(email,password_hash) VALUES('auth@example.test','test') RETURNING id`).Scan(&userID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.Exec(`INSERT INTO projects(name,owner_id,api_key) VALUES('auth',$1,'valid-key')`, userID); err != nil {
+		t.Fatal(err)
+	}
+	auth := middleware.NewAuthMiddleware(database)
+	handler := auth.RequireAPIKey(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusNoContent) })
+	for _, tc := range []struct {
+		name, key string
+		want      int
+	}{{"missing", "", http.StatusUnauthorized}, {"invalid", "wrong", http.StatusUnauthorized}, {"valid", "valid-key", http.StatusNoContent}} {
+		t.Run(tc.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, "/", nil)
+			if tc.key != "" {
+				req.Header.Set("X-API-Key", tc.key)
+			}
+			rr := httptest.NewRecorder()
+			handler.ServeHTTP(rr, req)
+			if rr.Code != tc.want {
+				t.Fatalf("status=%d, want %d", rr.Code, tc.want)
+			}
+		})
+	}
 }
 
 func doJSON(t *testing.T, client *http.Client, method, url string, body interface{}) *http.Response {

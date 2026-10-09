@@ -26,3 +26,47 @@ jobs:
         with:
           go-version-file: go.mod
       - run: go test ./...
+      - name: Build production image
+        run: docker build --tag configra:ci .
+      - name: Start production image and verify HTTP endpoints
+        shell: bash
+        run: |
+          docker run --detach --name configra-api --network host \
+            -e DB_HOST=localhost -e DB_PORT=5432 \
+            -e DB_USER=configra -e DB_PASSWORD=configra \
+            -e DB_NAME=configra_test -e DB_SSLMODE=disable \
+            configra:ci
+          cleanup() { docker logs configra-api || true; docker rm -f configra-api || true; }
+          trap cleanup EXIT
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:8080/ready >/dev/null; then break; fi
+            sleep 2
+          done
+          curl --fail --silent http://127.0.0.1:8080/health
+          curl --fail --silent http://127.0.0.1:8080/ready
+          curl --fail --silent http://127.0.0.1:8080/ | grep -q 'Configra'
+          curl --fail --silent http://127.0.0.1:8080/dashboard | grep -qi 'dashboard\|control'
+          test "$(curl --silent --output /dev/null --write-out '%{http_code}' http://127.0.0.1:8080/v1/configs)" = 401
+          docker stop configra-api
+          docker run --detach --name configra-api --network host \
+            -e DB_HOST=localhost -e DB_PORT=5432 \
+            -e DB_USER=configra -e DB_PASSWORD=configra \
+            -e DB_NAME=configra_test -e DB_SSLMODE=disable \
+            -e CONFIGRA_API_KEY=integration-api-key configra:ci
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:8080/ready >/dev/null; then break; fi
+            sleep 2
+          done
+          curl --fail --silent http://127.0.0.1:8080/ready
+          payload='{"env_id":1,"key":"ci-smoke","data":{"enabled":true},"schema":{"rules":{"enabled":{"type":"bool","required":true}}}}'
+          curl --fail --silent --show-error -H 'Content-Type: application/json' \
+            -H 'X-API-Key: integration-api-key' -d "$payload" \
+            http://127.0.0.1:8080/v1/configs | grep -q '"version":1'
+          curl --fail --silent --show-error -H 'X-API-Key: integration-api-key' \
+            'http://127.0.0.1:8080/v1/configs/ci-smoke?env_id=1' | grep -q '"version":1'
+          curl --fail --silent --show-error -H 'X-API-Key: integration-api-key' \
+            -X POST -H 'Content-Type: application/json' \
+            -d '{"env_id":1,"target_version":1}' \
+            http://127.0.0.1:8080/v1/configs/ci-smoke/rollback | grep -q '"version":2'
+          CONFIGRA_API_KEY=integration-api-key go run ./cmd/cli fetch \
+            -project 1 -key ci-smoke -env 1 -host http://127.0.0.1:8080 | grep -q '"version": 2'

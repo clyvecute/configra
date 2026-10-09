@@ -26,22 +26,22 @@ func main() {
 	configPath := validateCmd.String("config", "config.json", "Path to the configuration file")
 
 	pushCmd := flag.NewFlagSet("push", flag.ExitOnError)
-	_ = pushCmd.String("file", "config.json", "Config file to push")
-	_ = pushCmd.String("project", "", "Project ID")
-	_ = pushCmd.String("key", "feature_flags", "Config key name to push under")
-	_ = pushCmd.String("env", "1", "Environment ID")
+	pushFile := pushCmd.String("file", "config.json", "Config file to push")
+	pushProject := pushCmd.String("project", "", "Project ID")
+	pushKey := pushCmd.String("key", "feature_flags", "Config key name to push under")
+	pushEnv := pushCmd.String("env", "1", "Environment ID")
 	pushHost := pushCmd.String("host", "http://localhost:8080", "API Host URL")
 
 	fetchCmd := flag.NewFlagSet("fetch", flag.ExitOnError)
-	_ = fetchCmd.String("project", "", "Project ID")
-	_ = fetchCmd.String("key", "", "Config key to fetch")
-	_ = fetchCmd.String("env", "1", "Environment ID")
+	fetchProject := fetchCmd.String("project", "", "Project ID")
+	fetchKey := fetchCmd.String("key", "", "Config key to fetch")
+	fetchEnv := fetchCmd.String("env", "1", "Environment ID")
 	fetchHost := fetchCmd.String("host", "http://localhost:8080", "API Host URL")
 
 	rollbackCmd := flag.NewFlagSet("rollback", flag.ExitOnError)
-	_ = rollbackCmd.String("project", "", "Project ID")
-	_ = rollbackCmd.String("key", "", "Config Key")
-	_ = rollbackCmd.String("version", "", "Target Version to restore")
+	rollbackProject := rollbackCmd.String("project", "", "Project ID")
+	rollbackKey := rollbackCmd.String("key", "", "Config Key")
+	rollbackVersion := rollbackCmd.String("version", "", "Target Version to restore")
 	rollbackHost := rollbackCmd.String("host", "http://localhost:8080", "API Host URL")
 	rollbackEnv := rollbackCmd.String("env", "1", "Environment ID")
 
@@ -51,57 +51,13 @@ func main() {
 		runValidate(*schemaPath, *configPath)
 	case "push":
 		pushCmd.Parse(os.Args[2:])
-		file := "config.json"
-		if f := pushCmd.Lookup("file"); f != nil {
-			file = f.Value.String()
-		}
-		proj := ""
-		if p := pushCmd.Lookup("project"); p != nil {
-			proj = p.Value.String()
-		}
-		cfgKey := "feature_flags"
-		if k := pushCmd.Lookup("key"); k != nil {
-			cfgKey = k.Value.String()
-		}
-		envID := "1"
-		if e := pushCmd.Lookup("env"); e != nil {
-			envID = e.Value.String()
-		}
-		runPush(file, proj, cfgKey, envID, *pushHost)
+		runPush(*pushFile, *pushProject, *pushKey, *pushEnv, *pushHost)
 	case "fetch":
 		fetchCmd.Parse(os.Args[2:])
-		proj := ""
-		if p := fetchCmd.Lookup("project"); p != nil {
-			proj = p.Value.String()
-		}
-		cfgKey := ""
-		if k := fetchCmd.Lookup("key"); k != nil {
-			cfgKey = k.Value.String()
-		}
-		envID := "1"
-		if e := fetchCmd.Lookup("env"); e != nil {
-			envID = e.Value.String()
-		}
-		runFetch(proj, cfgKey, envID, *fetchHost)
+		runFetch(*fetchProject, *fetchKey, *fetchEnv, *fetchHost)
 	case "rollback":
 		rollbackCmd.Parse(os.Args[2:])
-		p := ""
-		if f := rollbackCmd.Lookup("project"); f != nil {
-			p = f.Value.String()
-		}
-		k := ""
-		if f := rollbackCmd.Lookup("key"); f != nil {
-			k = f.Value.String()
-		}
-		v := ""
-		if f := rollbackCmd.Lookup("version"); f != nil {
-			v = f.Value.String()
-		}
-		e := "1"
-		if rollbackEnv != nil {
-			e = *rollbackEnv
-		}
-		runRollback(p, k, v, e, *rollbackHost)
+		runRollback(*rollbackProject, *rollbackKey, *rollbackVersion, *rollbackEnv, *rollbackHost)
 	case "migrate":
 		// Ensure we load config to get DB creds
 		runMigrate()
@@ -221,6 +177,11 @@ func runPush(configFile, projectID, cfgKey, envIDStr, host string) {
 		fmt.Println("-key is required")
 		os.Exit(1)
 	}
+	apiKey := os.Getenv("CONFIGRA_API_KEY")
+	if apiKey == "" {
+		fmt.Println("CONFIGRA_API_KEY environment variable is not set")
+		os.Exit(1)
+	}
 
 	payload := map[string]interface{}{
 		"project_id": pID,
@@ -231,7 +192,14 @@ func runPush(configFile, projectID, cfgKey, envIDStr, host string) {
 	}
 
 	body, _ := json.Marshal(payload)
-	resp, err := http.Post(fmt.Sprintf("%s/v1/configs", host), "application/json", bytes.NewBuffer(body))
+	request, err := http.NewRequest(http.MethodPost, fmt.Sprintf("%s/v1/configs", host), bytes.NewBuffer(body))
+	if err != nil {
+		fmt.Printf("Failed to build request: %v\n", err)
+		os.Exit(1)
+	}
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("X-API-Key", apiKey)
+	resp, err := (&http.Client{}).Do(request)
 	if err != nil {
 		fmt.Printf("Failed to connect to API: %v\n", err)
 		os.Exit(1)

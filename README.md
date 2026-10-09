@@ -73,6 +73,31 @@ configra rollback -project 1 -key feature_flags -version 1
 
 ```
 
+Set `CONFIGRA_API_KEY` before running `push`, `fetch`, or `rollback`. Push sends the project credential in the `X-API-Key` header. The `-project` flag is retained for CLI compatibility; authorization scope is derived from the API key.
+
+## Verification and release evidence
+
+CI runs `go test ./...` with a PostgreSQL 15 service. The tests exercise configuration validation, append-only history, historical reads, diffs, rollback, concurrent version allocation, migration idempotency, and API-key acceptance/rejection. Tests needing PostgreSQL skip locally unless `CONFIGRA_TEST_DATABASE_URL` is set; CI sets it and provisions PostgreSQL.
+
+CI also builds the production Docker image, starts it against PostgreSQL, checks liveness/readiness and the landing/dashboard routes, confirms protected access is denied without credentials, and exercises authenticated config write/read/rollback plus CLI fetch. A green run is evidence for that commit and those checks; it is not a substitute for a production deployment or load/security review.
+
+The `/health` endpoint reports process liveness. `/ready` reports readiness only while PostgreSQL is reachable. The API exits on startup when it cannot connect to PostgreSQL or apply migrations.
+
+For each release, retain the GitHub Actions run URL and commit SHA. After deployment, retain the Cloud Run deployment run, the image digest, and the post-deployment `/health` and `/ready` results. A successful workflow file or local test run alone does not prove a cloud deployment succeeded. Schema validation uses Configra's documented `version`/`rules` format; it is not a general JSON Schema implementation.
+
+### Evidence matrix
+
+| Claim | Automated evidence | Remaining release evidence |
+| --- | --- | --- |
+| Atomic versioning, history, rollback | PostgreSQL lifecycle and concurrent-writer integration tests | CI run on the release commit |
+| Strict config validation | Validator unit tests and invalid-push integration test | Confirm schemas match the documented Configra rules format |
+| Migrations | Fresh migration and rerun/idempotency integration test | Successful deployment migration log |
+| CLI push/fetch/rollback | CLI fetch and API rollback smoke operations run against the image in CI; CLI credentials use `CONFIGRA_API_KEY` | Release artifact/installation check on supported platforms |
+| Dashboard and landing page | HTTP smoke checks in container CI | Visual review if UI changes |
+| Container operation | Production image build and PostgreSQL-backed route smoke tests | Published image digest for each release |
+| Cloud deployment | Workflow deploys then checks `/health` and `/ready` | Green deployment job, URL, and image digest |
+| Twelve-Factor practices | External config, stdout logs, stateless API, health/readiness; DB required at startup | Operational review of secrets, scaling, backups, and managed DB settings |
+
 ---
 
 ## Deployment
