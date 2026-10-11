@@ -83,6 +83,8 @@ CI also builds the production Docker image, starts it against PostgreSQL, checks
 
 The `/health` endpoint reports process liveness. `/ready` reports readiness only while PostgreSQL is reachable. The API exits on startup when it cannot connect to PostgreSQL or apply migrations.
 
+For managed bootstrap deployments, `CONFIGRA_BOOTSTRAP_API_KEY` optionally replaces the migration-seeded local default project's API key at startup. Supply a 32–64 character random value from a secret manager; the API fails startup if the variable is set but the expected default project is missing.
+
 For each release, retain the GitHub Actions run URL and commit SHA. After deployment, retain the Cloud Run deployment run, the image digest, and the post-deployment `/health` and `/ready` results. A successful workflow file or local test run alone does not prove a cloud deployment succeeded. Schema validation uses Configra's documented `version`/`rules` format; it is not a general JSON Schema implementation.
 
 ### Evidence matrix

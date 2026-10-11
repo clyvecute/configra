@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 
 	"github.com/clyvecute/configra/internal/config"
 	"github.com/clyvecute/configra/internal/configs"
@@ -27,6 +28,20 @@ func main() {
 			log.Fatalf("Database migration failed: %v", err)
 		} else {
 			log.Println("Migrations applied successfully!")
+		}
+		// Replace the migration's local-only demo credential when a production
+		// bootstrap key is supplied through Secret Manager.
+		if bootstrapKey := os.Getenv("CONFIGRA_BOOTSTRAP_API_KEY"); bootstrapKey != "" {
+			if len(bootstrapKey) < 32 || len(bootstrapKey) > 64 {
+				log.Fatal("CONFIGRA_BOOTSTRAP_API_KEY must be between 32 and 64 characters")
+			}
+			result, err := database.Exec(`UPDATE projects SET api_key=$1 WHERE id=1 AND name='Default Project'`, bootstrapKey)
+			if err != nil {
+				log.Fatalf("Failed to configure the default project API key: %v", err)
+			}
+			if count, err := result.RowsAffected(); err != nil || count != 1 {
+				log.Fatalf("Expected to configure exactly one default project API key (rows=%d, err=%v)", count, err)
+			}
 		}
 	}
 
